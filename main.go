@@ -19,6 +19,8 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	// create a new *database.Queries, and store it in your apiConfig struct so that handlers can access it:
 	db *database.Queries
+	// 
+	platform       string
 }
 
 func main() {
@@ -33,12 +35,28 @@ func main() {
 	if dbURL == "" {
 		log.Fatal("DB_URL must be set")
 	}
+	// 
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM must be set")
+	} else {
+		fmt.Printf("Platform is %s\n", platform)
+	}
 
 	// Next, sql.Open() a connection to your database:
+	// "postgres" is the name of the driver to use; available from _ "github.com/lib/pq"
+	// dbURL is the Postgres connection string
 	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Error opening database: %s", err)
 	}
+	// temp, for testing:
+	if err := dbConn.Ping(); err != nil {
+    // handle ping/connectivity error
+	} else {
+		fmt.Printf("Successfully connected to database\n")
+	}
+
 	// Use your SQLC generated database package to create a new *database.Queries:
 	dbQueries := database.New(dbConn)
 
@@ -49,7 +67,9 @@ func main() {
 		// atomic.Int32{} creates an atomic.Int32 starting at the default value (zero)
 		// This ensures you can immediately use its atomic methods like .Add() and .Load()
 		fileserverHits: atomic.Int32{},
+		// assigns dbQueries (the database connection) to the db field so handlers can run queries:
 		db:             dbQueries,
+		platform:       platform,
 	}
 
 	// Create a new http.ServeMux:
@@ -70,12 +90,18 @@ func main() {
 		// * handlerReadiness is the function that will run whenever someone calls /healthz. This function must match the signature func(http.ResponseWriter, *http.Request)
 	// Update the following paths to only accept GET requests:
 	// prepend /api to the beginning of each of our API endpoints:
-		mux.HandleFunc("GET /api/healthz", handlerReadiness)
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	// // Use the http.NewServeMux's .Handle() method to add a handler for the root path (/):
 	// // Use a standard http.FileServer as the handler:
 	// // Use http.Dir to convert a filepath (in our case a dot: . which indicates the current directory) 
 	// // to a directory for the http.FileServer:
 	// mux.Handle("/", http.FileServer(http.Dir(filepathRoot)))
+
+	mux.HandleFunc("POST /api/users", apiCfg.handlerUsersCreate)
+	// Add a POST /api/chirps handler:
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirpsCreate)
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerChirpsRetrieve)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerChirpsGet)
 
 	// Register the handlerMetrics handler with the serve mux on the /metrics path:
 	// Update the following paths to only accept GET requests:
@@ -87,10 +113,9 @@ func main() {
 	// back to 0:
 	// Update the /reset endpoint to only accept POST requests:
 		// prepend /api to the beginning of each of our API endpoints:
-	// Update the POST /api/reset to POST /admin/reset:
+		// Update the POST /api/reset to POST /admin/reset:
+	// Update the POST /admin/reset endpoint to delete all users in the database (but don't mess with the schema)
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
-
-	mux.HandleFunc("POST /api/validate_chirp", handlerChirpsValidate)
 
 	// Create a new http.Server struct:
 	srv := &http.Server{
