@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 	"github.com/google/uuid"
+	"github.com/craigbucher/learn-http-servers/internal/auth"
+	"github.com/craigbucher/learn-http-servers/internal/database"
 )
 
 // I created a User struct in my main package. When the database package returns a database.User, I map 
@@ -14,12 +16,14 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Password  string    `json:"-"` 		// json means don't unmarshal from JSON, don't marshal to JSON (ignore)
 }
 
 //  create a method on apiConfig that handles POST /api/users:
 func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request) {
 	// create a struct for the shape of the expected JSON request body:
 	type parameters struct {
+		Password string `json:"password"`
 		Email string `json:"email"`
 	}
 	// create a struct for the shape of the JSON response; it embeds your local User type (created above)
@@ -39,10 +43,21 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// calls your bcrypt-based helper to turn the raw password into a secure hash. It returns the 
+	// hash string and an error:
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password", err)
+		return
+	}
+
 	// Call the SQLC-generated CreateUser with the request context and the email from the parsed body:
 		// r.Context(): ties the DB call to the HTTP request (cancels on timeout/abort)
 		// On success, user holds the newly created row (id, timestamps, email)
-	user, err := cfg.db.CreateUser(r.Context(), params.Email)
+	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
 		return
