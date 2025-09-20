@@ -17,6 +17,7 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
 	Password  string    `json:"-"` 		// json means don't unmarshal from JSON, don't marshal to JSON (ignore)
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 //  create a method on apiConfig that handles POST /api/users:
@@ -71,6 +72,7 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
 			Email:     user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 	})
 }

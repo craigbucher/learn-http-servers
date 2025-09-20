@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"github.com/craigbucher/learn-http-servers/internal/auth"
 	"github.com/craigbucher/learn-http-servers/internal/database"
 	"github.com/google/uuid"
 )
@@ -23,8 +24,21 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 	// define the shape of your incoming JSON; The json:"body" tag tells Go how to map the JSON field 
 	// to the struct field:
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+	// look for the Authorization header like "Bearer <token>" and returns just the <token>:
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT", err)
+		return
+	}
+	// verify the JWT’s signature and expiration using your server’s secret. 
+	// If valid, it extract and returns the user’s ID embedded in the token:
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		// If the JWT is invalid, return a 401 Unauthorized response
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT", err)
+		return
 	}
 
 	// create a decoder that reads from the request body:
@@ -32,7 +46,7 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 	// create an empty parameters struct:
 	params := parameters{}
 	// fill it with the JSON data; The &params passes a pointer so the decoder can modify the struct:
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
@@ -49,7 +63,7 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 	// database.CreateChirpParams = parameters to insert into the database:
 	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleaned,		// validated/sanitized chirp body
-		UserID: params.UserID,	// the author’s UUID
+		UserID: userID,		// the author’s UUID
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp", err)

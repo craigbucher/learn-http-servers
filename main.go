@@ -21,6 +21,8 @@ type apiConfig struct {
 	db *database.Queries
 	// 
 	platform       string
+	jwtSecret      string	// from .env
+	polkaKey       string	// from .env
 }
 
 func main() {
@@ -41,6 +43,14 @@ func main() {
 		log.Fatal("PLATFORM must be set")
 	} else {
 		fmt.Printf("Platform is %s\n", platform)
+	}
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is not set")
+	}
+	polkaKey := os.Getenv("POLKA_KEY")
+	if polkaKey == "" {
+		log.Fatal("POLKA_KEY environment variable is not set")
 	}
 
 	// Next, sql.Open() a connection to your database:
@@ -70,6 +80,8 @@ func main() {
 		// assigns dbQueries (the database connection) to the db field so handlers can run queries:
 		db:             dbQueries,
 		platform:       platform,
+		jwtSecret:      jwtSecret,	// from .env
+		polkaKey:       polkaKey,	// from .env
 	}
 
 	// Create a new http.ServeMux:
@@ -98,11 +110,18 @@ func main() {
 	// mux.Handle("/", http.FileServer(http.Dir(filepathRoot)))
 
 	mux.HandleFunc("POST /api/users", apiCfg.handlerUsersCreate)
+	mux.HandleFunc("PUT /api/users", apiCfg.handlerUsersUpdate)
 	// Add a POST /api/chirps handler:
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirpsCreate)
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerChirpsRetrieve)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerChirpsGet)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handlerChirpsDelete)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlerWebhook)
+
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	// Create a POST /api/refresh endpoint:
+	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
+	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 
 	// Register the handlerMetrics handler with the serve mux on the /metrics path:
 	// Update the following paths to only accept GET requests:

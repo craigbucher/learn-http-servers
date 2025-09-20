@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"github.com/google/uuid"
+	"sort"
 )
 
 func (cfg *apiConfig) handlerChirpsGet(w http.ResponseWriter, r *http.Request) {
@@ -47,10 +48,40 @@ func (cfg *apiConfig) handlerChirpsRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Initialize authorID to the zero-value UUID (all zeros). This means “no author filter” by default:
+	authorID := uuid.Nil
+	// Read the optional author_id query param from the request URL as a string. If absent, it’s "":
+	authorIDString := r.URL.Query().Get("author_id")
+	// If authorIDString is not blank:
+	if authorIDString != "" {
+		// Convert the string to a UUID:
+		authorID, err = uuid.Parse(authorIDString)
+		// If parsing fails, it’s an invalid ID format:
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid author ID", err)
+			return
+		}
+	}
+
+	// set the default to ascending:
+	sortDirection := "asc"
+	// gets the sort query param from the URL:
+	sortDirectionParam := r.URL.Query().Get("sort")
+	// overrides the default only if the client asked for desc:
+	if sortDirectionParam == "desc" {
+		sortDirection = "desc"
+	}
+
 	// initialize an empty slice of your API’s Chirp type:
 	chirps := []Chirp{}
 	// loop over each DB record:
 	for _, dbChirp := range dbChirps {
+		// If the authorID is not nil and
+		// the UserID of the chirp does not equal the authorID:
+		if authorID != uuid.Nil && dbChirp.UserID != authorID {
+			// skip this chirp:
+			continue
+		}
 		// append a new Chirp (your response model) built from the DB row:
 		chirps = append(chirps, Chirp{
 			ID:        dbChirp.ID,
@@ -60,6 +91,16 @@ func (cfg *apiConfig) handlerChirpsRetrieve(w http.ResponseWriter, r *http.Reque
 			Body:      dbChirp.Body,
 		})
 	}
+
+	// sort the chirps slice in place:
+	sort.Slice(chirps, func(i, j int) bool {
+		if sortDirection == "desc" {
+			// chirps[i].CreatedAt and chirps[j].CreatedAt are time.Time values
+			// .After(other) returns true if the receiver is strictly later than other:
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		}
+		return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+	})
 
 	// write: a successful JSON HTTP response:
 	respondWithJSON(w, http.StatusOK, chirps)
