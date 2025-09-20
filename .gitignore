@@ -32,3 +32,4 @@ go.work.sum
 # .vscode/
 learn-http-servers
 database.json
+out
